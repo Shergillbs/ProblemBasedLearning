@@ -3,29 +3,43 @@
 import type React from "react"
 
 import { useState } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import { GraduationCap, BookOpen, Users } from "lucide-react"
 import Link from "next/link"
+import { useAuth } from "@/contexts/auth-context"
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
-  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState("")
+  const { signIn, loading } = useAuth()
+  const router = useRouter()
+  const searchParams = useSearchParams()
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-    setLoading(true)
+    setError("")
 
-    // Mock login - in real implementation, this would use Supabase
-    setTimeout(() => {
-      console.log("[v0] Mock login attempt:", { email })
-      setLoading(false)
-      // Redirect to dashboard
-      window.location.href = "/"
-    }, 1000)
+    try {
+      const { error } = await signIn(email, password)
+      
+      if (error) {
+        setError(error.message || "An error occurred during sign in")
+        return
+      }
+
+      // Redirect to the page they were trying to access, or home
+      const redirectTo = searchParams.get('redirectedFrom') || '/'
+      router.push(redirectTo)
+    } catch (err) {
+      setError("An unexpected error occurred")
+      console.error("Login error:", err)
+    }
   }
 
   return (
@@ -50,6 +64,11 @@ export default function LoginPage() {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleLogin} className="space-y-4">
+              {error && (
+                <Alert variant="destructive">
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
                 <Input

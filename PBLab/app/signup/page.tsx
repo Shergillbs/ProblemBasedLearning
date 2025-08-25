@@ -3,13 +3,16 @@
 import type React from "react"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { GraduationCap } from "lucide-react"
 import Link from "next/link"
+import { useAuth } from "@/contexts/auth-context"
 
 export default function SignupPage() {
   const [formData, setFormData] = useState({
@@ -19,19 +22,52 @@ export default function SignupPage() {
     fullName: "",
     role: "",
   })
-  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState("")
+  const [success, setSuccess] = useState("")
+  const { signUp, loading } = useAuth()
+  const router = useRouter()
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault()
-    setLoading(true)
+    setError("")
+    setSuccess("")
 
-    // Mock signup - in real implementation, this would use Supabase
-    setTimeout(() => {
-      console.log("[v0] Mock signup attempt:", formData)
-      setLoading(false)
-      // Redirect to dashboard
-      window.location.href = "/"
-    }, 1000)
+    // Validate form
+    if (formData.password !== formData.confirmPassword) {
+      setError("Passwords do not match")
+      return
+    }
+
+    if (formData.password.length < 6) {
+      setError("Password must be at least 6 characters long")
+      return
+    }
+
+    if (!formData.role) {
+      setError("Please select your role")
+      return
+    }
+
+    try {
+      const { error } = await signUp(formData.email, formData.password, {
+        full_name: formData.fullName,
+        role: formData.role,
+      })
+      
+      if (error) {
+        setError(error.message || "An error occurred during sign up")
+        return
+      }
+
+      setSuccess("Account created successfully! Please check your email to verify your account.")
+      // Note: With Supabase, user will need to verify email before they can sign in
+      setTimeout(() => {
+        router.push('/login')
+      }, 3000)
+    } catch (err) {
+      setError("An unexpected error occurred")
+      console.error("Signup error:", err)
+    }
   }
 
   const updateFormData = (field: string, value: string) => {
@@ -60,6 +96,16 @@ export default function SignupPage() {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSignup} className="space-y-4">
+              {error && (
+                <Alert variant="destructive">
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+              {success && (
+                <Alert>
+                  <AlertDescription>{success}</AlertDescription>
+                </Alert>
+              )}
               <div className="space-y-2">
                 <Label htmlFor="fullName">Full Name</Label>
                 <Input
