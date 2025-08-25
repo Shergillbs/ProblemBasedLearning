@@ -17,11 +17,29 @@ import {
   Target,
   TrendingUp,
   AlertTriangle,
+  Loader2,
+  AlertCircle,
 } from "lucide-react"
 import { AuthGuard } from "@/components/auth-guard"
+import { useAuth } from "@/contexts/auth-context"
+import { useDashboardData, formatPBLPhase } from "@/hooks/useDashboardData"
 
 export default function PBLabDashboard() {
-  const userRole = "student" // Could be "student", "educator", or "admin"
+  const { user, signOut } = useAuth()
+  const { objectives, projects, portfolioSummary, loading, error, refreshData } = useDashboardData()
+  
+  // Get user role from user metadata or default to student
+  const userRole = user?.user_metadata?.role || "student"
+  const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || "User"
+  const userInitials = userName.split(' ').map((n: string) => n.charAt(0)).join('').substring(0, 2).toUpperCase()
+
+  const handleSignOut = async () => {
+    try {
+      await signOut()
+    } catch (error) {
+      console.error('Error signing out:', error)
+    }
+  }
 
   return (
     <AuthGuard>
@@ -51,19 +69,16 @@ export default function PBLabDashboard() {
                 <div className="flex items-center gap-2">
                   <Avatar>
                     <AvatarImage src="/placeholder.svg?height=32&width=32" />
-                    <AvatarFallback>JS</AvatarFallback>
+                    <AvatarFallback>{userInitials}</AvatarFallback>
                   </Avatar>
                   <div className="text-sm">
-                    <p className="font-medium">Jordan Smith</p>
+                    <p className="font-medium">{userName}</p>
                     <p className="text-muted-foreground capitalize">{userRole}</p>
                   </div>
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => {
-                      localStorage.removeItem("mockUser")
-                      window.location.href = "/login"
-                    }}
+                    onClick={handleSignOut}
                   >
                     Logout
                   </Button>
@@ -113,23 +128,46 @@ export default function PBLabDashboard() {
                   <CardTitle className="flex items-center gap-2 text-base">
                     <Target className="h-4 w-4 text-primary" />
                     Learning Objectives
+                    {loading && <Loader2 className="h-3 w-3 animate-spin ml-1" />}
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span>Epidemiology Mastery</span>
-                      <span className="text-primary">75%</span>
+                  {loading ? (
+                    <div className="space-y-2">
+                      <div className="h-4 bg-muted animate-pulse rounded" />
+                      <div className="h-2 bg-muted animate-pulse rounded" />
+                      <div className="h-4 bg-muted animate-pulse rounded" />
+                      <div className="h-2 bg-muted animate-pulse rounded" />
                     </div>
-                    <Progress value={75} className="h-2" />
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span>Statistical Analysis</span>
-                      <span className="text-primary">60%</span>
+                  ) : error ? (
+                    <div className="flex items-center gap-2 text-red-600 text-sm">
+                      <AlertCircle className="h-4 w-4" />
+                      <span>Failed to load objectives</span>
                     </div>
-                    <Progress value={60} className="h-2" />
-                  </div>
+                  ) : objectives.length === 0 ? (
+                    <div className="text-center py-4 text-muted-foreground text-sm">
+                      No learning objectives yet.
+                      <br />
+                      <span className="text-xs">Create at least 3 to get started!</span>
+                    </div>
+                  ) : (
+                    <>
+                      {objectives.slice(0, 2).map((objective) => (
+                        <div key={objective.objective.id} className="space-y-2">
+                          <div className="flex justify-between text-sm">
+                            <span className="truncate pr-2">{objective.objective.objective_description}</span>
+                            <span className="text-primary">{objective.progress_percentage}%</span>
+                          </div>
+                          <Progress value={objective.progress_percentage} className="h-2" />
+                        </div>
+                      ))}
+                      {objectives.length > 2 && (
+                        <div className="text-xs text-muted-foreground text-center">
+                          +{objectives.length - 2} more objectives
+                        </div>
+                      )}
+                    </>
+                  )}
                   <Button size="sm" variant="outline" className="w-full bg-transparent">
                     View All Objectives
                   </Button>
@@ -160,13 +198,40 @@ export default function PBLabDashboard() {
             <div className="lg:col-span-3 space-y-6">
               {/* Welcome Section */}
               <div>
-                <h2 className="text-2xl font-bold text-foreground mb-2">Welcome back, Jordan!</h2>
+                <h2 className="text-2xl font-bold text-foreground mb-2">Welcome back, {userName.split(' ')[0]}!</h2>
                 <p className="text-muted-foreground font-serif">
-                  {userRole === "educator"
-                    ? "2 teams need intervention • 15 students active today"
-                    : "You have 2 active projects and 3 learning objectives in progress."}
+                  {loading ? (
+                    "Loading your dashboard..."
+                  ) : error ? (
+                    "Unable to load dashboard data"
+                  ) : userRole === "educator" ? (
+                    "2 teams need intervention • 15 students active today"
+                  ) : (
+                    `You have ${projects.length} active project${projects.length !== 1 ? 's' : ''} and ${objectives.length} learning objective${objectives.length !== 1 ? 's' : ''} in progress.`
+                  )}
                 </p>
               </div>
+
+              {/* Minimum Objectives Warning */}
+              {!loading && !error && objectives.length < 3 && (
+                <Card className="border-yellow-200 bg-yellow-50">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-yellow-800">
+                      <AlertTriangle className="h-5 w-5" />
+                      Learning Objectives Required
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-yellow-700">
+                      You need at least 3 individual learning objectives to participate fully in PBL activities. 
+                      Currently you have {objectives.length}/3 objectives.
+                    </p>
+                    <Button size="sm" className="mt-3" variant="outline">
+                      Create Learning Objectives
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
 
               {userRole === "educator" && (
                 <Card className="border-red-200 bg-red-50">
@@ -206,132 +271,127 @@ export default function PBLabDashboard() {
               {/* Active Projects */}
               <div>
                 <h3 className="text-lg font-semibold text-foreground mb-4">Active Projects</h3>
-                <div className="grid gap-4 md:grid-cols-2">
-                  {/* Project 1 - Outbreak Simulator */}
-                  <Card className="hover:shadow-md transition-shadow">
-                    <CardHeader>
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <CardTitle className="text-base">Outbreak Simulator</CardTitle>
-                          <CardDescription className="font-serif">Epidemiology • Team Alpha</CardDescription>
+                {loading ? (
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <Card className="animate-pulse">
+                      <CardHeader>
+                        <div className="h-4 bg-muted rounded w-3/4" />
+                        <div className="h-3 bg-muted rounded w-1/2" />
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-3">
+                          <div className="h-2 bg-muted rounded" />
+                          <div className="h-4 bg-muted rounded w-1/2" />
                         </div>
-                        <Badge variant="secondary">Jump 4: Analysis</Badge>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="space-y-2">
-                        <div className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">Individual Progress</span>
-                          <span className="font-medium">75%</span>
+                      </CardContent>
+                    </Card>
+                    <Card className="animate-pulse">
+                      <CardHeader>
+                        <div className="h-4 bg-muted rounded w-3/4" />
+                        <div className="h-3 bg-muted rounded w-1/2" />
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-3">
+                          <div className="h-2 bg-muted rounded" />
+                          <div className="h-4 bg-muted rounded w-1/2" />
                         </div>
-                        <Progress value={75} className="h-2" />
-                        <div className="flex justify-between text-xs text-muted-foreground">
-                          <span>Team: 65%</span>
-                          <span>Evidence Portfolio: 8/10</span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <div className="flex -space-x-2">
-                          <Avatar className="h-6 w-6 border-2 border-background">
-                            <AvatarFallback className="text-xs">JS</AvatarFallback>
-                          </Avatar>
-                          <Avatar className="h-6 w-6 border-2 border-background">
-                            <AvatarFallback className="text-xs">MK</AvatarFallback>
-                          </Avatar>
-                          <Avatar className="h-6 w-6 border-2 border-background">
-                            <AvatarFallback className="text-xs">AL</AvatarFallback>
-                          </Avatar>
-                        </div>
-                        <span className="text-sm text-muted-foreground">3 team members</span>
-                      </div>
-
-                      <div className="flex items-center justify-between pt-2">
-                        <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                          <div className="flex items-center gap-1">
-                            <Upload className="h-3 w-3" />
-                            <span>5 artifacts</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <MessageSquare className="h-3 w-3" />
-                            <span>12 comments</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <Target className="h-3 w-3" />
-                            <span>3 reflections</span>
-                          </div>
-                        </div>
-                        <Button size="sm" variant="ghost">
-                          Continue <ChevronRight className="h-3 w-3 ml-1" />
-                        </Button>
+                      </CardContent>
+                    </Card>
+                  </div>
+                ) : error ? (
+                  <Card>
+                    <CardContent className="flex items-center justify-center py-8">
+                      <div className="flex items-center gap-2 text-red-600">
+                        <AlertCircle className="h-5 w-5" />
+                        <span>Failed to load projects</span>
                       </div>
                     </CardContent>
                   </Card>
-
-                  {/* Project 2 - EcoBalance */}
-                  <Card className="hover:shadow-md transition-shadow">
-                    <CardHeader>
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <CardTitle className="text-base">EcoBalance</CardTitle>
-                          <CardDescription className="font-serif">Environmental Science • Team Beta</CardDescription>
-                        </div>
-                        <Badge variant="outline">Jump 1: Clarification</Badge>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="space-y-2">
-                        <div className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">Individual Progress</span>
-                          <span className="font-medium">30%</span>
-                        </div>
-                        <Progress value={30} className="h-2" />
-                        <div className="flex justify-between text-xs text-muted-foreground">
-                          <span>Team: 25%</span>
-                          <span>Evidence Portfolio: 2/10</span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <div className="flex -space-x-2">
-                          <Avatar className="h-6 w-6 border-2 border-background">
-                            <AvatarFallback className="text-xs">JS</AvatarFallback>
-                          </Avatar>
-                          <Avatar className="h-6 w-6 border-2 border-background">
-                            <AvatarFallback className="text-xs">RH</AvatarFallback>
-                          </Avatar>
-                          <Avatar className="h-6 w-6 border-2 border-background">
-                            <AvatarFallback className="text-xs">TC</AvatarFallback>
-                          </Avatar>
-                          <Avatar className="h-6 w-6 border-2 border-background">
-                            <AvatarFallback className="text-xs">LM</AvatarFallback>
-                          </Avatar>
-                        </div>
-                        <span className="text-sm text-muted-foreground">4 team members</span>
-                      </div>
-
-                      <div className="flex items-center justify-between pt-2">
-                        <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                          <div className="flex items-center gap-1">
-                            <Upload className="h-3 w-3" />
-                            <span>2 artifacts</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <MessageSquare className="h-3 w-3" />
-                            <span>8 comments</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <Target className="h-3 w-3" />
-                            <span>1 reflection</span>
-                          </div>
-                        </div>
-                        <Button size="sm" variant="ghost">
-                          Continue <ChevronRight className="h-3 w-3 ml-1" />
-                        </Button>
+                ) : projects.length === 0 ? (
+                  <Card>
+                    <CardContent className="flex items-center justify-center py-8">
+                      <div className="text-center text-muted-foreground">
+                        <BookOpen className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                        <p>No active projects</p>
+                        <p className="text-xs mt-1">Join a team to start collaborating!</p>
                       </div>
                     </CardContent>
                   </Card>
-                </div>
+                ) : (
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {projects.map((project) => {
+                      const phaseInfo = formatPBLPhase(project.current_phase)
+                      return (
+                        <Card key={project.id} className="hover:shadow-md transition-shadow">
+                          <CardHeader>
+                            <div className="flex items-start justify-between">
+                              <div>
+                                <CardTitle className="text-base">{project.project_name}</CardTitle>
+                                <CardDescription className="font-serif">
+                                  {project.course_name || 'Course'} • {project.team_name || 'Team'}
+                                </CardDescription>
+                              </div>
+                              <Badge variant={project.current_phase === 'analysis' ? 'secondary' : 'outline'}>
+                                {phaseInfo.number}: {phaseInfo.label}
+                              </Badge>
+                            </div>
+                          </CardHeader>
+                          <CardContent className="space-y-4">
+                            <div className="space-y-2">
+                              <div className="flex justify-between text-sm">
+                                <span className="text-muted-foreground">Individual Progress</span>
+                                <span className="font-medium">{project.individual_progress}%</span>
+                              </div>
+                              <Progress value={project.individual_progress} className="h-2" />
+                              <div className="flex justify-between text-xs text-muted-foreground">
+                                <span>Team: {project.team_progress}%</span>
+                                <span>Evidence Portfolio: {project.evidence_count}/{project.total_evidence}</span>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              <div className="flex -space-x-2">
+                                {project.team_members.slice(0, 4).map((member) => (
+                                  <Avatar key={member.id} className="h-6 w-6 border-2 border-background">
+                                    <AvatarFallback className="text-xs">{member.initials}</AvatarFallback>
+                                  </Avatar>
+                                ))}
+                                {project.team_members.length > 4 && (
+                                  <div className="h-6 w-6 border-2 border-background rounded-full bg-muted flex items-center justify-center text-xs">
+                                    +{project.team_members.length - 4}
+                                  </div>
+                                )}
+                              </div>
+                              <span className="text-sm text-muted-foreground">
+                                {project.team_members.length} team member{project.team_members.length !== 1 ? 's' : ''}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center justify-between pt-2">
+                              <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                                <div className="flex items-center gap-1">
+                                  <Upload className="h-3 w-3" />
+                                  <span>{project.artifacts_count} artifacts</span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <MessageSquare className="h-3 w-3" />
+                                  <span>{project.comments_count} comments</span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <Target className="h-3 w-3" />
+                                  <span>{project.reflections_count} reflections</span>
+                                </div>
+                              </div>
+                              <Button size="sm" variant="ghost">
+                                Continue <ChevronRight className="h-3 w-3 ml-1" />
+                              </Button>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
 
               {/* Recent Activity */}
