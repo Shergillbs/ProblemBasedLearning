@@ -5,7 +5,7 @@
  * Simplified to avoid complex mocking issues while validating core functionality.
  */
 
-import { render, waitFor } from '@testing-library/react'
+import { render, waitFor, act } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import { AuthProvider, useAuth } from '@/contexts/auth-context'
 

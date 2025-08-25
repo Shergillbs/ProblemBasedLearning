@@ -4,7 +4,7 @@ import type { User } from "@supabase/supabase-js"
 import type React from "react"
 
 import { createContext, useContext, useEffect, useState } from "react"
-import { supabase } from "@/lib/supabase"
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 
 interface AuthContextType {
   user: User | null
@@ -20,21 +20,29 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
+  const supabase = createClientComponentClient()
 
   useEffect(() => {
+    let isMounted = true
+
     // Get initial session
     const getSession = async () => {
       try {
         const { data: { session }, error } = await supabase.auth.getSession()
+        if (!isMounted) return
+        
         if (error) {
           console.error("Error getting session:", error)
         } else {
           setUser(session?.user ?? null)
         }
       } catch (error) {
+        if (!isMounted) return
         console.error("Error in getSession:", error)
       } finally {
-        setLoading(false)
+        if (isMounted) {
+          setLoading(false)
+        }
       }
     }
 
@@ -43,6 +51,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        if (!isMounted) return
+        
         setUser(session?.user ?? null)
         setLoading(false)
 
@@ -53,8 +63,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     )
 
-    return () => subscription.unsubscribe()
-  }, [])
+    return () => {
+      isMounted = false
+      subscription.unsubscribe()
+    }
+  }, [supabase])
 
   // Create or update user profile in our database
   const createOrUpdateUserProfile = async (user: User) => {
@@ -65,12 +78,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           id: user.id,
           email: user.email,
           full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'User',
-          avatar_url: user.user_metadata?.avatar_url || null,
+          role: 'student', // Default role for new users
           updated_at: new Date().toISOString()
         })
 
       if (error) {
         console.log("Note: User profile creation skipped (table may not be ready):", error.message)
+      } else {
+        console.log("User profile created/updated successfully")
       }
     } catch (error) {
       console.log("Note: User profile creation skipped (database not ready):", error)
@@ -83,6 +98,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         email,
         password,
       })
+      
       return { error }
     } catch (error) {
       return { error }

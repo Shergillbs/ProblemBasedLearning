@@ -11,6 +11,7 @@ export async function middleware(request: NextRequest) {
     data: { session },
   } = await supabase.auth.getSession()
 
+
   // Protected routes that require authentication
   const protectedRoutes = [
     '/',
@@ -39,10 +40,11 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(redirectUrl)
   }
 
-  // If user is authenticated and trying to access auth routes
+  // Let client-side handle redirects for authenticated users on auth routes
+  // This prevents race conditions between middleware and client-side redirects
   if (isAuthRoute && session) {
-    const redirectTo = request.nextUrl.searchParams.get('redirectedFrom') || '/'
-    return NextResponse.redirect(new URL(redirectTo, request.url))
+    // Don't redirect here - let the client-side auth context handle it
+    return res
   }
 
   return res
